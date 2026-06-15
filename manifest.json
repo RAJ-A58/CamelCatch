@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "CamelCatch",
+  "version": "1.0.0",
+  "description": "Real-time LeetCode linter to catch camelCase vs snake_case variable typos.",
+  "content_scripts": [
+    {
+      "matches": ["*://leetcode.com/problems/*"],
+      "js": ["content.js"]
+    }
+  ]
+}
