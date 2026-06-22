@@ -1,4 +1,4 @@
-console.log("🐫 CamelCatch: Modules 1 & 2 Initialized.");
+console.log("🐫 CamelCatch: Modules 1, 2 & 3 Initialized.");
 
 // --- STATE MANAGER VARIABLES ---
 let currentActiveUrl = window.location.href;
@@ -7,45 +7,66 @@ const heartbeatIntervalTime = 1500;
 
 // --- MODULE 2: UNIVERSAL PARSER ---
 function extractTargetVariables(rawCodeText) {
-    // 1. Regex to find everything inside the very first set of parentheses
-    // The pattern /\(([^)]+)\)/ looks for "(", then captures everything that isn't a ")", then looks for ")"
     const parenthesesMatch = rawCodeText.match(/\(([^)]+)\)/);
-    
-    // If no parentheses are found, return an empty array
     if (!parenthesesMatch) return []; 
     
-    // Example: "self, nums: List[int], target: int" OR "int[] nums, int target"
     const rawParametersString = parenthesesMatch[1]; 
     const rawParametersArray = rawParametersString.split(',');
     
     let extractedVariables = [];
 
-    // 2. Clean each parameter to isolate just the variable name
     rawParametersArray.forEach(function(parameter) {
         let cleanParameter = parameter.trim();
-        
-        // Strategy A: Python format (e.g., "nums: List[int]")
-        // The variable is always before the colon.
         if (cleanParameter.includes(':')) {
             cleanParameter = cleanParameter.split(':')[0].trim();
-        } 
-        // Strategy B: Java/C++/C# format (e.g., "int[] nums" or "vector<int>& nums")
-        // The variable is almost always the last word separated by a space.
-        else {
+        } else {
             const wordParts = cleanParameter.split(/\s+/);
             cleanParameter = wordParts[wordParts.length - 1];
-            
-            // Clean off any C++ pointers or references (like '*' or '&')
             cleanParameter = cleanParameter.replace(/[^a-zA-Z0-9_]/g, '');
         }
 
-        // 3. Filter out language keywords (like Python's 'self') and push to our target list
         if (cleanParameter && cleanParameter !== "self") {
             extractedVariables.push(cleanParameter);
         }
     });
 
     return extractedVariables;
+}
+
+// --- MODULE 3: THE DIFF ENGINE ---
+function detectTypos(liveCodeText, targets) {
+    let typosFound = [];
+    
+    targets.forEach(function(target) {
+        // Create a case-INSENSITIVE regex that looks for the whole word
+        // \b means "Word Boundary" so it doesn't match parts of other words
+        let regexPattern = new RegExp(`\\b${target}\\b`, 'gi');
+        
+        // Find every time this word appears in the editor
+        let matches = liveCodeText.match(regexPattern);
+        
+        if (matches) {
+            matches.forEach(function(typedWord) {
+                // If the word matches insensitively, but the exact casing is wrong... it's a typo!
+                if (typedWord !== target) {
+                    
+                    // We create a clean error object
+                    let errorObj = {
+                        expected: target,
+                        typed: typedWord
+                    };
+                    
+                    // Prevent logging the exact same error 50 times if they typed it multiple times
+                    let alreadyLogged = typosFound.some(err => err.typed === typedWord && err.expected === target);
+                    if (!alreadyLogged) {
+                        typosFound.push(errorObj);
+                    }
+                }
+            });
+        }
+    });
+    
+    return typosFound;
 }
 
 // --- MODULE 1: STATE MANAGER ---
@@ -67,12 +88,20 @@ const stateManagerHeartbeat = setInterval(function() {
     if (leetCodeEditorBox) {
         let liveCodeText = leetCodeEditorBox.innerText;
         
-        // If our memory is empty, we try to parse the editor for variables
+        // 1. Capture Targets if memory is empty
         if (targetVariablesList.length === 0 && liveCodeText.includes('(')) {
             targetVariablesList = extractTargetVariables(liveCodeText);
-            
             if (targetVariablesList.length > 0) {
                 console.log("🎯 Targets Captured! Watching for:", targetVariablesList);
+            }
+        }
+        
+        // 2. Scan for Typos if we have targets
+        if (targetVariablesList.length > 0) {
+            let activeTypos = detectTypos(liveCodeText, targetVariablesList);
+            
+            if (activeTypos.length > 0) {
+                console.warn("🚨 CamelCatch Linter found case-mismatches:", activeTypos);
             }
         }
     }
